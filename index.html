@@ -7480,7 +7480,7 @@ import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {SSAOPass} from 'three/addons/postprocessing/SSAOPass.js';
-import {Pass} from 'three/addons/postprocessing/Pass.js';
+import {Pass, FullScreenQuad} from 'three/addons/postprocessing/Pass.js';
 const THREE=Object.assign({},THREE_NS);window.THREE=THREE;
 // r128 호환: BufferAttribute.updateRange (r159에서 제거됨)
 Object.defineProperty(THREE.BufferAttribute.prototype,'updateRange',{get(){return this._ur||(this._ur={offset:0,count:-1})},configurable:true});
@@ -7558,7 +7558,7 @@ const RayTracedShadowShader={
  float shade=1.-shadow*uStrength;gl_FragColor=vec4(base.rgb*shade,base.a);}`
 };
 class RayTracedShadowPass extends Pass{
- constructor(camera,sun){super();this.camera=camera;this.sun=sun;this.material=new THREE.ShaderMaterial({uniforms:THREE.UniformsUtils.clone(RayTracedShadowShader.uniforms),vertexShader:RayTracedShadowShader.vertexShader,fragmentShader:RayTracedShadowShader.fragmentShader,depthTest:false,depthWrite:false});this.fsQuad=new Pass.FullScreenQuad(this.material);this.enabled=true;this.needsSwap=true;}
+ constructor(camera,sun){super();this.camera=camera;this.sun=sun;this.material=new THREE.ShaderMaterial({uniforms:THREE.UniformsUtils.clone(RayTracedShadowShader.uniforms),vertexShader:RayTracedShadowShader.vertexShader,fragmentShader:RayTracedShadowShader.fragmentShader,depthTest:false,depthWrite:false});this.fsQuad=new FullScreenQuad(this.material);this.enabled=true;this.needsSwap=true;}
  render(renderer,writeBuffer,readBuffer){const u=this.material.uniforms;u.tDiffuse.value=readBuffer.texture;u.tDepth.value=readBuffer.depthTexture||null;u.uInvProj.value.copy(this.camera.projectionMatrixInverse);u.uSunView.value.copy(this.sun).transformDirection(this.camera.matrixWorldInverse);u.uResolution.value.set(readBuffer.width||renderer.domElement.width,readBuffer.height||renderer.domElement.height);if(!u.tDepth.value){this.fsQuad.material=this.material;renderer.setRenderTarget(writeBuffer);this.fsQuad.render(renderer);return;}this.fsQuad.material=this.material;renderer.setRenderTarget(this.renderToScreen?null:writeBuffer);this.fsQuad.render(renderer);}
  dispose(){this.material.dispose();this.fsQuad.dispose();}
 }
