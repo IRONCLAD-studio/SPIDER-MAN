@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GLB 3D 모델 중복 제거 및 압축기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+    .drop-zone {
+      border: 2px dashed #475569;
+      transition: all 0.3s ease;
+    }
+    .drop-zone.dragover {
+      border-color: #ef4444;
+      background-color: rgba(239, 68, 68, 0.08);
+    }
+    .spidey-gradient {
+      background: linear-gradient(135deg, #dc2626 0%, #1d4ed8 100%);
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl spidey-gradient flex items-center justify-center shadow-lg shadow-red-500/20">
+          <i class="fa-solid fa-spider text-white text-lg"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-white tracking-tight">GLB 구조 최적화 & 중복 압축기</h1>
+          <p class="text-xs text-slate-400">SpiderMan_BND_WebGame_Final.glb 맞춤형 중복 데이터·채널·텍스처 최적화 도구</p>
+        </div>
+      </div>
+      <span class="px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+        100% 로컬 브라우저 처리
+      </span>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-5xl w-full mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+    
+    <!-- Left Column: Upload & Settings -->
+    <div class="lg:col-span-7 space-y-6">
+      
+      <!-- File Drop Zone -->
+      <div id="dropZone" class="drop-zone rounded-2xl p-8 text-center bg-slate-900/60 cursor-pointer flex flex-col items-center justify-center min-h-[210px]">
+        <input type="file" id="fileInput" accept=".glb" class="hidden">
+        <div id="uploadPrompt" class="space-y-3">
+          <div class="w-16 h-16 rounded-full bg-slate-800 mx-auto flex items-center justify-center text-red-500 text-2xl">
+            <i class="fa-solid fa-file-arrow-up"></i>
+          </div>
+          <div>
+            <p class="text-base font-semibold text-white">여기를 클릭하거나 <span class="text-red-400">.glb 파일</span>을 드래그하여 놓으세요</p>
+            <p class="text-xs text-slate-400 mt-1">SpiderMan_BND_WebGame_Final.glb (약 68.7MB) 등 대용량 파일 지원</p>
+          </div>
+        </div>
+
+        <div id="fileLoadedInfo" class="hidden w-full text-left space-y-4">
+          <div class="flex items-center justify-between bg-slate-800/80 p-4 rounded-xl border border-slate-700">
+            <div class="flex items-center space-x-3 overflow-hidden">
+              <i class="fa-solid fa-cube text-red-400 text-2xl flex-shrink-0"></i>
+              <div class="truncate">
+                <p id="fileName" class="text-sm font-semibold text-white truncate">SpiderMan_BND_WebGame_Final.glb</p>
+                <p id="fileOrigSize" class="text-xs text-slate-400">원본 크기: 계산 중...</p>
+              </div>
+            </div>
+            <button id="changeFileBtn" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs text-slate-200 flex-shrink-0 transition">
+              파일 변경
+            </button>
+          </div>
+
+          <!-- Detected Redundancies Summary -->
+          <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/60 space-y-2">
+            <p class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-magnifying-glass-chart text-blue-400"></i> 파일 내부 중복 및 비효율 진단 결과
+            </p>
+            <div id="diagnosisList" class="text-xs text-slate-300 space-y-1.5 pt-1">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compression Options -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-red-400"></i> 중복 데이터 제거 및 압축 옵션
+          </h2>
+          <span class="text-xs text-slate-400">스파이더맨 모델 구조 맞춤 설정</span>
+        </div>
+
+        <div class="space-y-4">
+          <!-- Option 1: Duplicate UV & Color Attributes -->
+          <label class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 cursor-pointer hover:bg-slate-800 transition">
+            <input type="checkbox" id="optStripExtraAttrs" checked class="mt-1 w-4 h-4 accent-red-500 rounded">
+            <div class="flex-1 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-white">여분의 중복 UV 및 버텍스 컬러 채널 정리</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-medium">메쉬 용량 절감</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">
+                이 모델에 중복 포함된 4개의 UV(`TEXCOORD_0~3`)와 3개의 컬러 채널(`COLOR_0~2`) 중 실제 렌더링에 쓰이지 않는 여분 채널 데이터를 바이너리 버퍼에서 완전히 제거합니다.
+              </p>
+              <div class="mt-2 flex flex-wrap gap-3 text-xs text-slate-300" id="attrSubOptions">
+                <label class="inline-flex items-center gap-1.5">
+                  <input type="checkbox" id="keepColor0" checked class="accent-red-500"> COLOR_0 (주 버텍스 컬러) 유지
+                </label>
+                <label class="inline-flex items-center gap-1.5">
+                  <input type="checkbox" id="keepTex1" class="accent-red-500"> TEXCOORD_1 유지
+                </label>
+              </div>
+            </div>
+          </label>
+
+          <!-- Option 2: Fix Duplicate Normal / BaseColor Texture Slot -->
+          <label class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 cursor-pointer hover:bg-slate-800 transition">
+            <input type="checkbox" id="optFixDuplicateNormal" checked class="mt-1 w-4 h-4 accent-red-500 rounded">
+            <div class="flex-1 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-white">재질 내 중복 연결된 노멀/텍스처 슬롯 수정 & RED 색상 복원</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-medium">렌더링 오류 해결</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">
+                `NEW NEW BLUE` 재질에서 `baseColorTexture`와 동일한 이미지를 중복 참조하는 잘못된 `normalTexture` 연결을 해제하고, 흰색으로 나오는 `NEW NEW RED` 재질에 스파이더맨 레드 컬러(`#B11313`)를 자동 적용합니다.
+              </p>
+            </div>
+          </label>
+
+          <!-- Option 3: Deduplicate Binary BufferViews -->
+          <label class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 cursor-pointer hover:bg-slate-800 transition">
+            <input type="checkbox" id="optDedupeBuffers" checked class="mt-1 w-4 h-4 accent-red-500 rounded">
+            <div class="flex-1 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-white">겹치는 바이너리 버퍼(BufferView) 병합 및 미사용 청크 제거</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-medium">무손실 구조 압축</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">
+                동일한 바이트 해시를 가진 중복 버퍼 영역을 하나로 통합(Deduplication)하고, 제거된 속성이나 참조되지 않는 유휴 바이너리 공간을 깨끗하게 재패킹(Repack)합니다.
+              </p>
+            </div>
+          </label>
+
+          <!-- Option 4: Embedded Texture Compression & Downscaling -->
+          <div class="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-3">
+            <label class="flex items-start space-x-3 cursor-pointer">
+              <input type="checkbox" id="optCompressTextures" checked class="mt-1 w-4 h-4 accent-red-500 rounded">
+              <div class="flex-1 text-sm">
+                <div class="flex items-center justify-between">
+                  <span class="font-semibold text-white">내장 UDIM 텍스처(8장, ~60MB) 고효율 재압축</span>
+                  <span class="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-300 font-medium">최대 85% 용량 감소</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">
+                  파일 용량의 87%를 차지하는 무거운 PNG 텍스처(`NEW_BRICKS_1001~1004` 및 ORM 맵)의 해상도와 포맷을 최적화하여 겹치는 픽셀 오버헤드를 대폭 줄입니다.
+                </p>
+              </div>
+            </label>
+
+            <div id="textureSubOptions" class="pl-7 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">변환 이미지 포맷</label>
+                <select id="texFormat" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500">
+                  <option value="image/jpeg" selected>JPEG (사파리 메모리 안전·초고속 권장)</option>
+                  <option value="image/webp">WebP (고효율 압축)</option>
+                  <option value="image/png">PNG 유지 (해상도 축소만 적용)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">최대 해상도 제한 (원본 대비)</label>
+                <select id="texMaxSize" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500">
+                  <option value="1024" selected>최대 1024px (1K - 사파리 튕김 방지 최적)</option>
+                  <option value="2048">최대 2048px (2K - 화질/용량 균형)</option>
+                  <option value="4096">원본 해상도 유지 (포맷만 압축)</option>
+                </select>
+              </div>
+              <div class="sm:col-span-2">
+                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                  <span>압축 품질 (Quality)</span>
+                  <span id="qualityVal" class="text-white font-semibold">85%</span>
+                </div>
+                <input type="range" id="texQuality" min="50" max="98" value="85" class="w-full accent-red-500">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Button -->
+        <button id="processBtn" disabled class="w-full py-3.5 px-6 rounded-xl font-bold text-sm text-white spidey-gradient opacity-50 cursor-not-allowed transition shadow-lg shadow-red-600/20 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-compress"></i>
+          <span>중복 제거 및 GLB 압축 시작하기</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right Column: Status, Log & Result Download -->
+    <div class="lg:col-span-5 flex flex-col space-y-6">
+      
+      <!-- Result Card -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-5">
+        <h2 class="text-base font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-chart-pie text-blue-400"></i> 압축 및 최적화 결과
+        </h2>
+
+        <!-- Progress Bar -->
+        <div id="progressContainer" class="hidden space-y-2">
+          <div class="flex justify-between text-xs">
+            <span id="progressStep" class="text-slate-300 font-medium">처리 중...</span>
+            <span id="progressPercent" class="text-red-400 font-bold">0%</span>
+          </div>
+          <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+            <div id="progressBar" class="h-full spidey-gradient transition-all duration-200" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Stats Comparison -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-slate-800/50 border border-slate-700/60 rounded-xl p-3.5">
+            <p class="text-xs text-slate-400">원본 파일 용량</p>
+            <p id="statOrigSize" class="text-lg font-bold text-slate-200 mt-1">-</p>
+          </div>
+          <div class="bg-slate-800/50 border border-slate-700/60 rounded-xl p-3.5">
+            <p class="text-xs text-slate-400">압축 후 용량</p>
+            <p id="statNewSize" class="text-lg font-bold text-emerald-400 mt-1">-</p>
+          </div>
+        </div>
+
+        <div id="savingBanner" class="hidden bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 text-center space-y-1">
+          <p class="text-xs text-emerald-300 font-medium">총 절감된 용량</p>
+          <p id="statSaved" class="text-2xl font-extrabold text-emerald-400">0 MB (-0%)</p>
+        </div>
+
+        <button id="downloadBtn" class="hidden w-full py-3.5 px-6 rounded-xl font-bold text-sm text-white bg-emerald-600 hover:bg-emerald-500 transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-download"></i>
+          <span>최적화된 GLB 파일 다운로드</span>
+        </button>
+      </div>
+
+      <!-- Detailed Optimization Log -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 flex-1 flex flex-col min-h-[260px]">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-terminal text-slate-400"></i> 처리 로그 (Log)
+          </h3>
+          <button id="clearLogBtn" class="text-xs text-slate-500 hover:text-slate-300">비우기</button>
+        </div>
+        <div id="logBox" class="flex-1 bg-slate-950 border border-slate-800/80 rounded-xl p-3.5 font-mono text-xs text-slate-300 overflow-y-auto max-h-[320px] space-y-1.5 custom-scrollbar">
+          <div class="text-slate-500">> GLB 파일을 업로드하면 내부 중복 구조 분석이 시작됩니다...</div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const uploadPrompt = document.getElementById('uploadPrompt');
+    const fileLoadedInfo = document.getElementById('fileLoadedInfo');
+    const fileNameEl = document.getElementById('fileName');
+    const fileOrigSizeEl = document.getElementById('fileOrigSize');
+    const changeFileBtn = document.getElementById('changeFileBtn');
+    const diagnosisList = document.getElementById('diagnosisList');
+    const processBtn = document.getElementById('processBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const logBox = document.getElementById('logBox');
+    const clearLogBtn = document.getElementById('clearLogBtn');
+
+    const statOrigSize = document.getElementById('statOrigSize');
+    const statNewSize = document.getElementById('statNewSize');
+    const savingBanner = document.getElementById('savingBanner');
+    const statSaved = document.getElementById('statSaved');
+
+    const progressContainer = document.getElementById('progressContainer');
+    const progressStep = document.getElementById('progressStep');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressBar = document.getElementById('progressBar');
+
+    const texQualityInput = document.getElementById('texQuality');
+    const qualityVal = document.getElementById('qualityVal');
+
+    let currentFile = null;
+    let parsedGlb = null;
+    let optimizedBlob = null;
+
+    texQualityInput.addEventListener('input', () => {
+      qualityVal.textContent = `${texQualityInput.value}%`;
+    });
+
+    clearLogBtn.addEventListener('click', () => {
+      logBox.innerHTML = '';
+    });
+
+    function addLog(msg, type = 'info') {
+      const div = document.createElement('div');
+      const colors = {
+        info: 'text-slate-300',
+        success: 'text-emerald-400 font-medium',
+        warn: 'text-amber-400',
+        error: 'text-red-400 font-semibold'
+      };
+      div.className = colors[type] || colors.info;
+      const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+      div.textContent = `[${time}] ${msg}`;
+      logBox.appendChild(div);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function setProgress(stepText, percent) {
+      progressContainer.classList.remove('hidden');
+      progressStep.textContent = stepText;
+      progressPercent.textContent = `${Math.round(percent)}%`;
+      progressBar.style.width = `${percent}%`;
+    }
+
+    // Drag & Drop Events
+    dropZone.addEventListener('click', (e) => {
+      if (e.target !== changeFileBtn && !changeFileBtn.contains(e.target)) {
+        fileInput.click();
+      }
+    });
+    changeFileBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fileInput.click();
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    async function handleFile(file) {
+      if (!file.name.toLowerCase().endsWith('.glb')) {
+        addLog('오류: .glb 확장자 파일만 업로드할 수 있습니다.', 'error');
+        return;
+      }
+      currentFile = file;
+      optimizedBlob = null;
+      downloadBtn.classList.add('hidden');
+      savingBanner.classList.add('hidden');
+      statNewSize.textContent = '-';
+
+      uploadPrompt.classList.add('hidden');
+      fileLoadedInfo.classList.remove('hidden');
+      fileNameEl.textContent = file.name;
+      fileOrigSizeEl.textContent = `원본 크기: ${formatBytes(file.size)} (${file.size.toLocaleString()} 바이트)`;
+      statOrigSize.textContent = formatBytes(file.size);
+
+      addLog(`파일 로드 중: ${file.name} (${formatBytes(file.size)})`);
+
+      try {
+        // 사파리 크래시 방지: 68.7MB 전체를 메모리에 올리지 않고 헤더와 JSON 청크만 부분 읽기
+        parsedGlb = await parseGLBFromFile(file);
+        analyzeGLB(parsedGlb, file.size);
+
+        processBtn.disabled = false;
+        processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      } catch (err) {
+        addLog(`GLB 파싱 실패: ${err.message}`, 'error');
+      }
+    }
+
+    async function parseGLBFromFile(file) {
+      // 1. 처음 20바이트(12바이트 헤더 + 8바이트 첫 청크 헤더)만 읽기
+      const headerBuf = await file.slice(0, 20).arrayBuffer();
+      const headerView = new DataView(headerBuf);
+      const magic = headerView.getUint32(0, true);
+      if (magic !== 0x46546C67) { // 'glTF'
+        throw new Error('유효한 GLB 파일이 아닙니다 (매직 헤더 불일치).');
+      }
+      const version = headerView.getUint32(4, true);
+      const totalLength = headerView.getUint32(8, true);
+
+      let offset = 12;
+      let jsonData = null;
+      let binOffset = -1;
+      let binLength = 0;
+
+      while (offset < totalLength && offset < file.size) {
+        const chunkHeaderBuf = await file.slice(offset, offset + 8).arrayBuffer();
+        const chunkView = new DataView(chunkHeaderBuf);
+        const chunkLength = chunkView.getUint32(0, true);
+        const chunkType = chunkView.getUint32(4, true);
+        offset += 8;
+
+        if (chunkType === 0x4E4F534A) { // JSON 청크만 메모리에 로드 (~수백 KB)
+          const jsonBuf = await file.slice(offset, offset + chunkLength).arrayBuffer();
+          const jsonText = new TextDecoder('utf-8').decode(new Uint8Array(jsonBuf));
+          jsonData = JSON.parse(jsonText);
+        } else if (chunkType === 0x004E4942) { // BIN 청크는 파일 오프셋만 기록 (RAM 0바이트 사용)
+          binOffset = offset;
+          binLength = chunkLength;
+        }
+        offset += chunkLength;
+      }
+
+      if (!jsonData || binOffset === -1) {
+        throw new Error('GLB 내부에 JSON 또는 BIN 청크가 누락되었습니다.');
+      }
+
+      return { version, json: jsonData, binOffset, binLength };
+    }
+
+    function analyzeGLB(glb, totalSize) {
+      const json = glb.json;
+      diagnosisList.innerHTML = '';
+
+      // 1. Check redundant attributes in meshes
+      let extraUvCount = 0;
+      let extraColorCount = 0;
+      let totalPrims = 0;
+      if (json.meshes) {
+        json.meshes.forEach(m => {
+          (m.primitives || []).forEach(p => {
+            totalPrims++;
+            Object.keys(p.attributes || {}).forEach(attr => {
+              if (attr.startsWith('TEXCOORD_') && attr !== 'TEXCOORD_0') extraUvCount++;
+              if (attr.startsWith('COLOR_') && attr !== 'COLOR_0') extraColorCount++;
+            });
+          });
+        });
+      }
+
+      // 2. Check duplicate texture slots in materials
+      let dupNormalMatCount = 0;
+      let emptyRedMatCount = 0;
+      if (json.materials) {
+        json.materials.forEach(mat => {
+          const baseIdx = mat.pbrMetallicRoughness?.baseColorTexture?.index;
+          const normIdx = mat.normalTexture?.index;
+          if (baseIdx !== undefined && normIdx !== undefined && baseIdx === normIdx) {
+            dupNormalMatCount++;
+          }
+          if (mat.name && mat.name.includes('RED') && !mat.pbrMetallicRoughness?.baseColorTexture && !mat.pbrMetallicRoughness?.baseColorFactor) {
+            emptyRedMatCount++;
+          }
+        });
+      }
+
+      // 3. Calculate embedded image byte size
+      let imageBytes = 0;
+      const imageCount = (json.images || []).length;
+      if (json.images && json.bufferViews) {
+        json.images.forEach(img => {
+          if (img.bufferView !== undefined) {
+            imageBytes += json.bufferViews[img.bufferView].byteLength || 0;
+          }
+        });
+      }
+
+      const items = [
+        `• 서브 메쉬(Primitive) ${totalPrims}개에서 여분 UV 슬롯 ${extraUvCount}개, 여분 버텍스 컬러 슬롯 ${extraColorCount}개 발견`,
+        `• 내장 이미지 ${imageCount}장이 ${formatBytes(imageBytes)} 차지 (전체 용량의 ${((imageBytes / totalSize) * 100).toFixed(1)}%)`,
+        dupNormalMatCount > 0
+          ? `• [중복 참조] ${dupNormalMatCount}개 재질에서 BaseColor와 NormalMap이 동일한 텍스처를 중복 참조 중`
+          : `• 재질 텍스처 슬롯 정상`,
+        emptyRedMatCount > 0
+          ? `• [누락 감지] 'NEW NEW RED' 재질에 BaseColor 색상/텍스처 미지정 상태`
+          : `• 모든 재질 컬러 정상`
+      ];
+
+      items.forEach(txt => {
+        const p = document.createElement('p');
+        p.textContent = txt;
+        diagnosisList.appendChild(p);
+      });
+
+      addLog(`분석 완료: 메쉬 ${json.meshes?.length || 0}개, 조인트/노드 ${json.nodes?.length || 0}개, 내장 텍스처 ${imageCount}장 (${formatBytes(imageBytes)})`, 'success');
+    }
+
+    // FNV-1a fast hash for binary deduplication
+    function hashUint8Array(arr) {
+      let hash = 2166136261;
+      const step = Math.max(1, Math.floor(arr.length / 4096)); // sample up to 4096 points + length for speed on huge buffers, then verify exact match
+      for (let i = 0; i < arr.length; i += step) {
+        hash ^= arr[i];
+        hash = Math.imul(hash, 16777619);
+      }
+      return `${arr.length}_${hash >>> 0}`;
+    }
+
+    function arraysEqual(a, b) {
+      if (a.byteLength !== b.byteLength) return false;
+      for (let i = 0; i < a.byteLength; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+
+    function dataURLToUint8Array(dataURL) {
+      const parts = dataURL.split(',');
+      const base64 = parts[1];
+      const binaryStr = atob(base64);
+      const len = binaryStr.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    // 사파리 VRAM 폭발 방지를 위해 단일 캔버스 재사용
+    const sharedCanvas = document.createElement('canvas');
+    const sharedCtx = sharedCanvas.getContext('2d', { willReadFrequently: false });
+
+    async function loadImageAndDrawToCanvas(blob, maxDim) {
+      // HTMLImageElement를 사용해 디코딩 후 즉시 목표 해상도(예: 1024)의 작은 캔버스에 그림
+      return await new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.decoding = 'async';
+        img.onload = () => {
+          try {
+            let width = img.naturalWidth || img.width;
+            let height = img.naturalHeight || img.height;
+
+            if (width > maxDim || height > maxDim) {
+              if (width >= height) {
+                height = Math.max(1, Math.round((height * maxDim) / width));
+                width = maxDim;
+              } else {
+                width = Math.max(1, Math.round((width * maxDim) / height));
+                height = maxDim;
+              }
+            }
+
+            sharedCanvas.width = width;
+            sharedCanvas.height = height;
+            sharedCtx.clearRect(0, 0, width, height);
+            sharedCtx.drawImage(img, 0, 0, width, height);
+
+            // 즉시 이미지 엘리먼트 메모리 해제
+            img.src = '';
+            URL.revokeObjectURL(url);
+            resolve({ width, height });
+          } catch (err) {
+            URL.revokeObjectURL(url);
+            reject(err);
+          }
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error('이미지 디코딩에 실패했습니다.'));
+        };
+        img.src = url;
+      });
+    }
+
+    async function canvasToBlobSafe(canvas, targetMime, quality) {
+      const tryBlob = (mime) => new Promise((resolve) => {
+        try {
+          canvas.toBlob((b) => resolve(b), mime, quality);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+
+      // 1차 시도: 사용자가 선택한 포맷
+      let blob = await tryBlob(targetMime);
+      let actualMime = targetMime;
+
+      // Safari 등 WebP 인코딩 미지원 브라우저에서 blob이 null일 경우 JPEG로 자동 폴백
+      if (!blob && targetMime !== 'image/jpeg') {
+        actualMime = 'image/jpeg';
+        blob = await tryBlob('image/jpeg');
+      }
+
+      // 그래도 null이면 PNG로 폴백
+      if (!blob && actualMime !== 'image/png') {
+        actualMime = 'image/png';
+        blob = await tryBlob('image/png');
+      }
+
+      if (blob) {
+        return { blob, byteLength: blob.size, mimeType: blob.type || actualMime };
+      }
+
+      // toBlob 자체가 실패하는 환경일 경우 toDataURL 폴백
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      const matchedMime = dataUrl.match(/^data:([^;]+);/)?.[1] || 'image/jpeg';
+      const bytes = dataURLToUint8Array(dataUrl);
+      const fallbackBlob = new Blob([bytes], { type: matchedMime });
+      return { blob: fallbackBlob, byteLength: fallbackBlob.size, mimeType: matchedMime };
+    }
+
+    async function recompressImageSlice(fileSliceBlob, mimeType, targetMime, maxDim, quality) {
+      const typedBlob = fileSliceBlob.slice(0, fileSliceBlob.size, mimeType || 'image/png');
+      const { width, height } = await loadImageAndDrawToCanvas(typedBlob, maxDim);
+      const encoded = await canvasToBlobSafe(sharedCanvas, targetMime, quality);
+
+      // 사파리 캔버스 백킹 스토어 즉시 축소 및 GC 시간 확보
+      sharedCtx.clearRect(0, 0, sharedCanvas.width, sharedCanvas.height);
+      sharedCanvas.width = 1;
+      sharedCanvas.height = 1;
+
+      return {
+        blob: encoded.blob,
+        byteLength: encoded.byteLength,
+        mimeType: encoded.mimeType,
+        width,
+        height
+      };
+    }
+
+    processBtn.addEventListener('click', async () => {
+      if (!parsedGlb || !currentFile) return;
+
+      processBtn.disabled = true;
+      processBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      downloadBtn.classList.add('hidden');
+      savingBanner.classList.add('hidden');
+
+      try {
+        setProgress('JSON 메타데이터 복제 및 중복 분석 중...', 5);
+        await new Promise(r => setTimeout(r, 50));
+
+        // Deep clone JSON
+        const json = JSON.parse(JSON.stringify(parsedGlb.json));
+        const binStartOffset = parsedGlb.binOffset;
+
+        const stripExtraAttrs = document.getElementById('optStripExtraAttrs').checked;
+        const keepColor0 = document.getElementById('keepColor0').checked;
+        const keepTex1 = document.getElementById('keepTex1').checked;
+        const fixDupNormal = document.getElementById('optFixDuplicateNormal').checked;
+        const dedupeBuffers = document.getElementById('optDedupeBuffers').checked;
+        const compressTextures = document.getElementById('optCompressTextures').checked;
+
+        const texFormat = document.getElementById('texFormat').value;
+        const texMaxSize = parseInt(document.getElementById('texMaxSize').value, 10);
+        const texQuality = parseInt(document.getElementById('texQuality').value, 10) / 100;
+
+        // Step 1: Strip redundant vertex attributes
+        let removedAttrCount = 0;
+        if (stripExtraAttrs && json.meshes) {
+          json.meshes.forEach(mesh => {
+            (mesh.primitives || []).forEach(prim => {
+              const attrs = prim.attributes || {};
+              Object.keys(attrs).forEach(key => {
+                if (key.startsWith('TEXCOORD_')) {
+                  if (key !== 'TEXCOORD_0' && !(keepTex1 && key === 'TEXCOORD_1')) {
+                    delete attrs[key];
+                    removedAttrCount++;
+                  }
+                } else if (key.startsWith('COLOR_')) {
+                  if (!(keepColor0 && key === 'COLOR_0')) {
+                    delete attrs[key];
+                    removedAttrCount++;
+                  }
+                }
+              });
+            });
+          });
+          addLog(`메쉬 중복 속성 정리: 미사용 UV 및 컬러 채널 슬롯 ${removedAttrCount}개 제거 완료`, 'info');
+        }
+
+        // Step 2: Fix duplicate normal textures & restore NEW NEW RED base color
+        if (fixDupNormal && json.materials) {
+          let fixedNormals = 0;
+          let restoredRed = 0;
+          json.materials.forEach(mat => {
+            const baseIdx = mat.pbrMetallicRoughness?.baseColorTexture?.index;
+            const normIdx = mat.normalTexture?.index;
+            if (baseIdx !== undefined && normIdx !== undefined && baseIdx === normIdx) {
+              delete mat.normalTexture;
+              fixedNormals++;
+            }
+            if (mat.name && mat.name.includes('RED')) {
+              if (!mat.pbrMetallicRoughness) mat.pbrMetallicRoughness = {};
+              if (!mat.pbrMetallicRoughness.baseColorTexture && !mat.pbrMetallicRoughness.baseColorTexture) {
+                mat.pbrMetallicRoughness.baseColorFactor = [0.439, 0.006, 0.006, 1.0];
+                mat.pbrMetallicRoughness.roughnessFactor = 0.48;
+                mat.pbrMetallicRoughness.metallicFactor = 0.0;
+                restoredRed++;
+              }
+            }
+          });
+          addLog(`재질 최적화: 중복 노멀맵 참조 ${fixedNormals}건 해제, NEW NEW RED 색상 복구 ${restoredRed}건 적용`, 'info');
+        }
+
+        // Step 3: Collect active Accessors and BufferViews
+        setProgress('사용 중인 Accessor 및 BufferView 추적 중...', 20);
+        await new Promise(r => setTimeout(r, 40));
+
+        const usedAccessors = new Set();
+        const markAccessor = (idx) => {
+          if (idx !== undefined && idx !== null) usedAccessors.add(idx);
+        };
+
+        (json.meshes || []).forEach(m => {
+          (m.primitives || []).forEach(p => {
+            markAccessor(p.indices);
+            Object.values(p.attributes || {}).forEach(markAccessor);
+            (p.targets || []).forEach(t => Object.values(t).forEach(markAccessor));
+          });
+        });
+
+        (json.skins || []).forEach(s => markAccessor(s.inverseBindMatrices));
+        (json.animations || []).forEach(a => {
+          (a.samplers || []).forEach(s => {
+            markAccessor(s.input);
+            markAccessor(s.output);
+          });
+        });
+
+        // Remap accessors so unused ones are dropped
+        const oldToNewAccessor = new Map();
+        const newAccessors = [];
+        (json.accessors || []).forEach((acc, oldIdx) => {
+          if (usedAccessors.has(oldIdx)) {
+            oldToNewAccessor.set(oldIdx, newAccessors.length);
+            newAccessors.push(acc);
+          }
+        });
+
+        const droppedAccessors = (json.accessors?.length || 0) - newAccessors.length;
+        json.accessors = newAccessors;
+
+        // Update accessor indices in meshes, skins, animations
+        (json.meshes || []).forEach(m => {
+          (m.primitives || []).forEach(p => {
+            if (p.indices !== undefined) p.indices = oldToNewAccessor.get(p.indices);
+            Object.keys(p.attributes || {}).forEach(k => {
+              p.attributes[k] = oldToNewAccessor.get(p.attributes[k]);
+            });
+            (p.targets || []).forEach(t => {
+              Object.keys(t).forEach(k => {
+                t[k] = oldToNewAccessor.get(t[k]);
+              });
+            });
+          });
+        });
+        (json.skins || []).forEach(s => {
+          if (s.inverseBindMatrices !== undefined) {
+            s.inverseBindMatrices = oldToNewAccessor.get(s.inverseBindMatrices);
+          }
+        });
+        (json.animations || []).forEach(a => {
+          (a.samplers || []).forEach(s => {
+            if (s.input !== undefined) s.input = oldToNewAccessor.get(s.input);
+            if (s.output !== undefined) s.output = oldToNewAccessor.get(s.output);
+          });
+        });
+
+        if (droppedAccessors > 0) {
+          addLog(`미사용 Accessor ${droppedAccessors}개 정리 완료`, 'info');
+        }
+
+        // Step 4: Compress Embedded Images one by one via File.slice (Zero full-buffer memory)
+        const imageBufferViews = new Set();
+        (json.images || []).forEach(img => {
+          if (img.bufferView !== undefined) imageBufferViews.add(img.bufferView);
+        });
+
+        const customBufferViewBlobs = new Map(); // bufferViewIndex -> Blob
+        if (compressTextures && json.images && json.images.length > 0) {
+          const totalImgs = json.images.length;
+          let beforeImgTotal = 0;
+          let afterImgTotal = 0;
+          let fallbackWarned = false;
+
+          for (let i = 0; i < totalImgs; i++) {
+            const img = json.images[i];
+            if (img.bufferView === undefined) continue;
+
+            const bv = json.bufferViews[img.bufferView];
+            const byteOffset = bv.byteOffset || 0;
+            const byteLength = bv.byteLength;
+            beforeImgTotal += byteLength;
+
+            const pct = 25 + ((i / totalImgs) * 50);
+            setProgress(`텍스처 저메모리 압축 중 (${i + 1}/${totalImgs}): ${img.name || 'Image_' + i}`, pct);
+            // 사파리 가비지 컬렉션(GC)이 이전 이미지 메모리를 회수할 수 있도록 충분한 숨고르기 시간 부여
+            await new Promise(r => setTimeout(r, 120));
+
+            const sliceStart = binStartOffset + byteOffset;
+            const fileSlice = currentFile.slice(sliceStart, sliceStart + byteLength);
+            const result = await recompressImageSlice(fileSlice, img.mimeType, texFormat, texMaxSize, texQuality);
+
+            if (!fallbackWarned && result.mimeType !== texFormat) {
+              addLog(`사파리 호환 모드: ${texFormat} 대신 ${result.mimeType} 포맷으로 안전하게 압축합니다.`, 'warn');
+              fallbackWarned = true;
+            }
+
+            if (result.byteLength < byteLength) {
+              customBufferViewBlobs.set(img.bufferView, result.blob);
+              img.mimeType = result.mimeType;
+              afterImgTotal += result.byteLength;
+              addLog(`  - ${img.name || '텍스처 #' + i}: ${formatBytes(byteLength)} → ${formatBytes(result.byteLength)} (${result.width}x${result.height})`, 'info');
+            } else {
+              afterImgTotal += byteLength;
+              addLog(`  - ${img.name || '텍스처 #' + i}: 원본 유지 (${formatBytes(byteLength)})`, 'info');
+            }
+          }
+          addLog(`텍스처 최적화 완료: 총 ${formatBytes(beforeImgTotal)} → ${formatBytes(afterImgTotal)}`, 'success');
+        }
+
+        // Step 5: Rebuild & Deduplicate BufferViews using Blob slices (Zero large ArrayBuffer allocation)
+        setProgress('바이너리 버퍼 중복 제거 및 스트리밍 패킹 중...', 82);
+        await new Promise(r => setTimeout(r, 60));
+
+        const usedBufferViews = new Set();
+        (json.accessors || []).forEach(acc => {
+          if (acc.bufferView !== undefined) usedBufferViews.add(acc.bufferView);
+          if (acc.sparse) {
+            if (acc.sparse.indices?.bufferView !== undefined) usedBufferViews.add(acc.sparse.indices.bufferView);
+            if (acc.sparse.values?.bufferView !== undefined) usedBufferViews.add(acc.sparse.values.bufferView);
+          }
+        });
+        (json.images || []).forEach(img => {
+          if (img.bufferView !== undefined) usedBufferViews.add(img.bufferView);
+        });
+
+        const oldToNewBv = new Map();
+        const newBufferViews = [];
+        const binBlobParts = []; // Blob / Uint8Array 조각들을 담을 배열 (복사 오버헤드 0)
+        const hashToNewBvIdx = new Map(); // hash -> [{ newIdx, rawBytes }]
+
+        let currentByteOffset = 0;
+        let dedupedBvCount = 0;
+        let dedupedByteSaved = 0;
+
+        const origBvs = json.bufferViews || [];
+        for (let oldIdx = 0; oldIdx < origBvs.length; oldIdx++) {
+          if (!usedBufferViews.has(oldIdx)) continue;
+          const bv = origBvs[oldIdx];
+
+          let chunkPart = null;
+          let chunkByteLength = 0;
+
+          if (customBufferViewBlobs.has(oldIdx)) {
+            const compressedBlob = customBufferViewBlobs.get(oldIdx);
+            chunkPart = compressedBlob;
+            chunkByteLength = compressedBlob.size;
+          } else {
+            const offset = bv.byteOffset || 0;
+            const length = bv.byteLength;
+            const sliceStart = binStartOffset + offset;
+
+            // 지오메트리/애니메이션 버퍼(비이미지)이고 2MB 이하일 때만 바이트 중복 검사 수행
+            if (dedupeBuffers && !imageBufferViews.has(oldIdx) && length <= 2 * 1024 * 1024) {
+              const arrBuf = await currentFile.slice(sliceStart, sliceStart + length).arrayBuffer();
+              const rawBytes = new Uint8Array(arrBuf);
+              const h = `${bv.byteStride || 0}_${bv.target || 0}_` + hashUint8Array(rawBytes);
+              const candidates = hashToNewBvIdx.get(h);
+              let matchedIdx = -1;
+              if (candidates) {
+                for (const cand of candidates) {
+                  if (arraysEqual(cand.rawBytes, rawBytes)) {
+                    matchedIdx = cand.newIdx;
+                    break;
+                  }
+                }
+              }
+              if (matchedIdx !== -1) {
+                oldToNewBv.set(oldIdx, matchedIdx);
+                dedupedBvCount++;
+                dedupedByteSaved += length;
+                continue;
+              }
+              const newIdx = newBufferViews.length;
+              if (!hashToNewBvIdx.has(h)) hashToNewBvIdx.set(h, []);
+              hashToNewBvIdx.get(h).push({ newIdx, rawBytes });
+              chunkPart = rawBytes;
+              chunkByteLength = length;
+            } else {
+              // 대용량 원본 텍스처 등은 메모리에 올리지 않고 파일 슬라이스(Blob) 그대로 참조
+              chunkPart = currentFile.slice(sliceStart, sliceStart + length);
+              chunkByteLength = length;
+            }
+          }
+
+          const newIdx = newBufferViews.length;
+          oldToNewBv.set(oldIdx, newIdx);
+
+          const alignedLength = (chunkByteLength + 3) & ~3;
+          const padding = alignedLength - chunkByteLength;
+
+          const newBv = {
+            buffer: 0,
+            byteOffset: currentByteOffset,
+            byteLength: chunkByteLength
+          };
+          if (bv.byteStride !== undefined) newBv.byteStride = bv.byteStride;
+          if (bv.target !== undefined) newBv.target = bv.target;
+          if (bv.name !== undefined) newBv.name = bv.name;
+
+          newBufferViews.push(newBv);
+          binBlobParts.push(chunkPart);
+          if (padding > 0) {
+            binBlobParts.push(new Uint8Array(padding)); // 0x00 패딩
+          }
+          currentByteOffset += alignedLength;
+        }
+
+        // 해시 캐시 메모리 즉시 해제
+        hashToNewBvIdx.clear();
+        customBufferViewBlobs.clear();
+
+        // Update references to bufferViews
+        (json.accessors || []).forEach(acc => {
+          if (acc.bufferView !== undefined) acc.bufferView = oldToNewBv.get(acc.bufferView);
+          if (acc.sparse) {
+            if (acc.sparse.indices?.bufferView !== undefined) {
+              acc.sparse.indices.bufferView = oldToNewBv.get(acc.sparse.indices.bufferView);
+            }
+            if (acc.sparse.values?.bufferView !== undefined) {
+              acc.sparse.values.bufferView = oldToNewBv.get(acc.sparse.values.bufferView);
+            }
+          }
+        });
+        (json.images || []).forEach(img => {
+          if (img.bufferView !== undefined) img.bufferView = oldToNewBv.get(img.bufferView);
+        });
+
+        const droppedBvCount = (parsedGlb.json.bufferViews?.length || 0) - newBufferViews.length;
+        json.bufferViews = newBufferViews;
+        json.buffers = [{ byteLength: currentByteOffset }];
+
+        addLog(`버퍼 재구성 완료: 미사용/중복 BufferView ${droppedBvCount}개 제거 (중복 병합 ${dedupedBvCount}건, ${formatBytes(dedupedByteSaved)} 절약)`, 'info');
+
+        // Step 6: Assemble final GLB using Blob array (Zero giant ArrayBuffer allocation)
+        setProgress('최종 GLB 바이너리 패키징 중...', 95);
+        await new Promise(r => setTimeout(r, 40));
+
+        const jsonString = JSON.stringify(json);
+        const jsonBytes = new TextEncoder().encode(jsonString);
+        const jsonPadding = (4 - (jsonBytes.byteLength % 4)) % 4;
+        const jsonChunkLength = jsonBytes.byteLength + jsonPadding;
+
+        const binChunkLength = currentByteOffset;
+        const totalGlbLength = 12 + 8 + jsonChunkLength + 8 + binChunkLength;
+
+        // 20바이트: GLB 헤더(12) + JSON 청크 헤더(8)
+        const glbAndJsonHeader = new ArrayBuffer(20);
+        const headerView = new DataView(glbAndJsonHeader);
+        headerView.setUint32(0, 0x46546C67, true); // 'glTF'
+        headerView.setUint32(4, 2, true);          // version 2
+        headerView.setUint32(8, totalGlbLength, true);
+        headerView.setUint32(12, jsonChunkLength, true);
+        headerView.setUint32(16, 0x4E4F534A, true); // 'JSON'
+
+        const jsonPadBytes = new Uint8Array(jsonPadding);
+        jsonPadBytes.fill(0x20); // space padding
+
+        // 8바이트: BIN 청크 헤더
+        const binChunkHeader = new ArrayBuffer(8);
+        const binHeaderView = new DataView(binChunkHeader);
+        binHeaderView.setUint32(0, binChunkLength, true);
+        binHeaderView.setUint32(4, 0x004E4942, true); // 'BIN\0'
+
+        const finalBlobParts = [
+          glbAndJsonHeader,
+          jsonBytes,
+          ...(jsonPadding > 0 ? [jsonPadBytes] : []),
+          binChunkHeader,
+          ...binBlobParts
+        ];
+
+        optimizedBlob = new Blob(finalBlobParts, { type: 'model/gltf-binary' });
+
+        setProgress('압축 및 중복 제거 완료!', 100);
+
+        const origBytes = currentFile.size;
+        const newBytes = optimizedBlob.size;
+        const savedBytes = origBytes - newBytes;
+        const savedPct = ((savedBytes / origBytes) * 100).toFixed(1);
+
+        statNewSize.textContent = formatBytes(newBytes);
+        savingBanner.classList.remove('hidden');
+        statSaved.textContent = `${formatBytes(Math.max(0, savedBytes))} (-${savedPct}%)`;
+
+        downloadBtn.classList.remove('hidden');
+        addLog(`최종 완료! ${formatBytes(origBytes)} → ${formatBytes(newBytes)} (${savedPct}% 감소)`, 'success');
+
+      } catch (err) {
+        addLog(`처리 중 오류 발생: ${err.message}`, 'error');
+        console.error(err);
+      } finally {
+        processBtn.disabled = false;
+        processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (!optimizedBlob || !currentFile) return;
+      const baseName = currentFile.name.replace(/\.glb$/i, '');
+      const outName = `${baseName}_Optimized.glb`;
+      const url = URL.createObjectURL(optimizedBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = outName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>
